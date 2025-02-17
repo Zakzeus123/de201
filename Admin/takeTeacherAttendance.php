@@ -2,60 +2,77 @@
 error_reporting(0);
 include '../Includes/dbcon.php';
 include '../Includes/session.php';
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-$dateTaken = date("Y-m-d");
+
+$dateTaken = date("Y-m-d H:i:s");
+$statusMsg = ""; // Initialize the variable to avoid "Undefined variable" warnings
 
 // Get active session and term
 $query = mysqli_query($conn, "SELECT * FROM tblsessionterm WHERE isActive ='1'");
 $row = mysqli_fetch_array($query);
 $sessionTermId = $row['Id'];
 
-// Check if attendance already exists for today
-$query = mysqli_query($conn, "SELECT * FROM tblteacherattendance WHERE dateTimeTaken1='$dateTaken'");
+// Check if attendance exists for today
+$query = mysqli_query($conn, "SELECT * FROM tblteacherattendance WHERE DATE(dateTimeTaken1) = CURDATE()");
 $count = mysqli_num_rows($query);
 
 if ($count == 0) { // If no attendance record exists, insert new records
-    $teacherQuery = mysqli_query($conn, "SELECT * FROM tblclassteacher");
-    while ($teacher = $teacherQuery->fetch_assoc()) {
-        mysqli_query($conn, "INSERT INTO tblteacherattendance(emailAddress, sessionTermId, status1, status2, status3, dateTimeTaken1) 
-                              VALUES ('$teacher[emailAddress]', '$sessionTermId', '0', '0', '0', '$dateTaken')");
-    }
+  $teacherQuery = mysqli_query($conn, "SELECT * FROM tblclassteacher");
+  while ($teacher = $teacherQuery->fetch_assoc()) {
+      $email = $teacher['emailAddress'];
+      $insertQuery = mysqli_query($conn, "INSERT INTO tblteacherattendance(emailAddress, sessionTermId, status1, status2, status3, dateTimeTaken1) 
+                            VALUES ('$email', '$sessionTermId', '0', '0', '0', '$dateTaken')
+                            ON DUPLICATE KEY UPDATE dateTimeTaken1=VALUES(dateTimeTaken1), status1=VALUES(status1), status2=VALUES(status2), status3=VALUES(status3)");
+      
+      // Debug SQL errors
+      if (!$insertQuery) {
+          echo "<p style='color:red;'>DEBUG: SQL Error - " . mysqli_error($conn) . "</p>";
+      }
+  }
 }
 
 // Handle form submission
 if (isset($_POST['save'])) {
-    $emailAddress = $_POST['emailAddress'];
-    $check1 = $_POST['check1'] ?? [];
-    $check2 = $_POST['check2'] ?? [];
-    $check3 = $_POST['check3'] ?? [];
-    $N = count($emailAddress);
+  $dateTaken = date("Y-m-d H:i:s"); // Ensure correct DATETIME format
+  
 
-    // Check if attendance has already been taken
-    $query = mysqli_query($conn, "SELECT * FROM tblteacherattendance WHERE dateTimeTaken1='$dateTaken' AND (status1 = '1' OR status2 = '1' OR status3 = '1')");
-    $count = mysqli_num_rows($query);
+  $emailAddress = $_POST['emailAddress'];
+  $check1 = $_POST['check1'] ?? [];
+  $check2 = $_POST['check2'] ?? [];
+  $check3 = $_POST['check3'] ?? [];
+  $N = count($emailAddress);
 
-    if ($count > 0) {
-        $statusMsg = "<div class='alert alert-danger' style='margin-right:700px;'>Attendance has already been taken for today!</div>";
-    } else {
-        // Update attendance statuses
-        for ($i = 0; $i < $N; $i++) {
-            $email = $emailAddress[$i]; // Teacher's email
+  // Check if attendance has already been taken for today
+  $query = mysqli_query($conn, "SELECT * FROM tblteacherattendance WHERE DATE(dateTimeTaken1) = CURDATE() AND (status1 = '1' OR status2 = '1' OR status3 = '1')");
+  $count = mysqli_num_rows($query);
 
-            $status1 = in_array($email, $check1) ? 1 : 0;
-            $status2 = in_array($email, $check2) ? 1 : 0;
-            $status3 = in_array($email, $check3) ? 1 : 0;
+  if ($count > 0) {
+      $statusMsg = "<div class='alert alert-danger' style='margin-right:700px;'>Attendance has already been taken for today!</div>";
+  } else {
+      // Update attendance statuses
+      for ($i = 0; $i < $N; $i++) {
+          $email = $emailAddress[$i]; // Teacher's email
 
-            $updateQuery = mysqli_query($conn, "UPDATE tblteacherattendance 
-                                                SET status1='$status1', status2='$status2', status3='$status3' 
-                                                WHERE emailAddress = '$email' AND dateTimeTaken1='$dateTaken'");
+          $status1 = in_array($email, $check1) ? 1 : 0;
+          $status2 = in_array($email, $check2) ? 1 : 0;
+          $status3 = in_array($email, $check3) ? 1 : 0;
 
-            if ($updateQuery) {
-                $statusMsg = "<div class='alert alert-success' style='margin-right:700px;'>Attendance Taken Successfully!</div>";
-            } else {
-                $statusMsg = "<div class='alert alert-danger' style='margin-right:700px;'>An error occurred!</div>";
-            }
-        }
-    }
+          // Debug status values before update
+          
+          $updateQuery = mysqli_query($conn, "UPDATE tblteacherattendance 
+                                              SET status1='$status1', status2='$status2', status3='$status3' 
+                                              WHERE emailAddress = '$email' AND DATE(dateTimeTaken1) = CURDATE()");
+
+          if ($updateQuery) {
+              $statusMsg = "<div class='alert alert-success' style='margin-right:700px;'>Attendance Taken Successfully!</div>";
+          } else {
+              echo "<p style='color:red;'>DEBUG: SQL Error - " . mysqli_error($conn) . "</p>";
+              $statusMsg = "<div class='alert alert-danger' style='margin-right:700px;'>An error occurred!</div>";
+          }
+      }
+  }
 }
 ?>
 
@@ -74,7 +91,7 @@ if (isset($_POST['save'])) {
   <link href="css/ruang-admin.min.css" rel="stylesheet">
 </head>
 <body id="page-top">
-  <div id="wrapper">
+  <div id="wrapper"> 
     <!-- Sidebar -->
     <?php include "Includes/sidebar.php"; ?>
     <!-- Sidebar -->
