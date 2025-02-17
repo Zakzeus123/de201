@@ -2,6 +2,8 @@
 error_reporting(0);
 include '../Includes/dbcon.php';
 include '../Includes/session.php';
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 ?>
 
 <!DOCTYPE html>
